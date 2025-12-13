@@ -70,26 +70,105 @@ fn extract_real_url_sync(input_url: &str) -> (String, bool) {
      (input_url.to_string(), false)
  }
 
+// 解码HTML实体
+fn decode_html_entities(s: &str) -> String {
+    s.replace("&#x2f;", "/")
+        .replace("&#x3a;", ":")
+        .replace("&#x3d;", "=")
+        .replace("&#x3f;", "?")
+        .replace("&#x26;", "&")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+}
+
 // 从微信拦截页面提取真实链接
 fn extract_from_wechat_page(wechat_url: &str) -> Option<String> {
     // 使用阻塞式HTTP客户端访问微信页面
     if let Ok(response) = reqwest::blocking::get(wechat_url) {
         if let Ok(html) = response.text() {
-            // 使用正则表达式提取cgiData中的desc字段
-             if let Ok(regex) = Regex::new(r#""desc"\s*:\s*"([^"]+)""#) {
+            // 方法1: 尝试从"继续访问"按钮提取（type: "gray" 的情况）
+            if let Ok(regex) = Regex::new(r#""name"\s*:\s*"继续访问",\s*"url"\s*:\s*"([^"]+)""#) {
                 if let Some(captures) = regex.captures(&html) {
-                    if let Some(desc_match) = captures.get(1) {
-                        let desc = desc_match.as_str();
-                        // 解码HTML实体
-                        let decoded = desc
-                            .replace("&#x2f;", "/")
-                            .replace("&#x3a;", ":")
-                            .replace("&amp;", "&")
-                            .replace("&lt;", "<")
-                            .replace("&gt;", ">");
-                        
+                    if let Some(url_match) = captures.get(1) {
+                        let decoded = decode_html_entities(url_match.as_str());
                         if decoded.starts_with("http://") || decoded.starts_with("https://") {
                             return Some(decoded);
+                        }
+                    }
+                }
+            }
+            
+            // 方法2: 尝试从desc字段提取（type: "empty" 的情况）
+            if let Ok(regex) = Regex::new(r#""desc"\s*:\s*"([^"]+)""#) {
+                if let Some(captures) = regex.captures(&html) {
+                    if let Some(desc_match) = captures.get(1) {
+                        let decoded = decode_html_entities(desc_match.as_str());
+                        if decoded.starts_with("http://") || decoded.starts_with("https://") {
+                            return Some(decoded);
+                        }
+                    }
+                }
+            }
+            
+            // 方法3: 从"申请恢复访问"按钮获取并解码base64（type: "block" 的情况）
+            if let Ok(regex) = Regex::new(r#""name"\s*:\s*"申请恢复访问",\s*"url"\s*:\s*"([^"]+)""#) {
+                if let Some(captures) = regex.captures(&html) {
+                    if let Some(url_match) = captures.get(1) {
+                        // 先解码HTML实体
+                        let restore_url = decode_html_entities(url_match.as_str());
+                        
+                        // 先尝试直接从申请恢复访问链接的url参数解码（新格式）
+                        if let Ok(parsed_url) = url::Url::parse(&restore_url) {
+                            let query_pairs: std::collections::HashMap<_, _> = parsed_url.query_pairs().collect();
+                            if let Some(encoded_url) = query_pairs.get("url") {
+                                use base64::Engine;
+                                if let Ok(decoded_bytes) = base64::engine::general_purpose::STANDARD.decode(encoded_url.as_ref()) {
+                                    if let Ok(final_url) = String::from_utf8(decoded_bytes) {
+                                        if final_url.starts_with("http://") || final_url.starts_with("https://") {
+                                            return Some(final_url);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 如果直接解码失败，尝试二次访问（旧格式）
+                        // 将newreadtemplate替换为redirecthelpcgi
+                        let redirect_url = restore_url.replace("newreadtemplate", "redirecthelpcgi");
+                        
+                        // 访问redirecthelpcgi链接获取JSON响应
+                        if let Ok(json_response) = reqwest::blocking::get(&redirect_url) {
+                            if let Ok(json_text) = json_response.text() {
+                                // 解析JSON并提取申请恢复按钮的URL
+                                if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&json_text) {
+                                    if let Some(btns) = json_value["btns"].as_array() {
+                                        for btn in btns {
+                                            if let Some(name) = btn["name"].as_str() {
+                                                if name == "申请恢复" {
+                                                    if let Some(btn_url) = btn["url"].as_str() {
+                                                        // 从URL中提取base64编码的参数
+                                                        if let Ok(parsed_url) = url::Url::parse(btn_url) {
+                                                            let query_pairs: std::collections::HashMap<_, _> = parsed_url.query_pairs().collect();
+                                                            if let Some(encoded_url) = query_pairs.get("url") {
+                                                                use base64::Engine;
+                                                                if let Ok(decoded_bytes) = base64::engine::general_purpose::STANDARD.decode(encoded_url.as_ref()) {
+                                                                    if let Ok(final_url) = String::from_utf8(decoded_bytes) {
+                                                                        if final_url.starts_with("http://") || final_url.starts_with("https://") {
+                                                                            return Some(final_url);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -176,7 +255,7 @@ fn get_installed_browsers() -> Vec<Browser> {
 enum UrlExtractionState {
     Pending,
     Loading,
-    Success(String),
+    Success,
     Failed(String),
 }
 
@@ -227,7 +306,7 @@ impl BrowserSelectorApp {
         let url_extraction_state = if needs_async {
             UrlExtractionState::Pending
         } else {
-            UrlExtractionState::Success(extracted_url.clone())
+            UrlExtractionState::Success
         };
 
         Self {
@@ -322,8 +401,8 @@ impl eframe::App for BrowserSelectorApp {
                     if handle.is_finished() {
                         match handle.join() {
                             Ok(Some(real_url)) => {
-                                self.url_to_open = real_url.clone();
-                                self.url_extraction_state = UrlExtractionState::Success(real_url);
+                                self.url_to_open = real_url;
+                                self.url_extraction_state = UrlExtractionState::Success;
                             }
                             Ok(None) => {
                                 self.url_extraction_state = UrlExtractionState::Failed("无法从微信页面提取链接".to_string());
@@ -348,7 +427,7 @@ impl eframe::App for BrowserSelectorApp {
         
         // URL提取状态提示（所有状态都需要预留空间）
         match &self.url_extraction_state {
-            UrlExtractionState::Loading | UrlExtractionState::Success(_) | UrlExtractionState::Failed(_) => {
+            UrlExtractionState::Loading | UrlExtractionState::Success | UrlExtractionState::Failed(_) => {
                 window_height += 20.0;
             }
             UrlExtractionState::Pending => {
@@ -526,7 +605,7 @@ impl eframe::App for BrowserSelectorApp {
                             });
                             ui.add_space(2.0);
                         }
-                        UrlExtractionState::Success(_) => {
+                        UrlExtractionState::Success => {
                             if self.original_url != self.url_to_open {
                                 ui.horizontal(|ui| {
                                     ui.add(egui::Label::new(egui::RichText::new("🔓 已提取真实链接").color(egui::Color32::from_rgb(0, 150, 0)).size(12.0)));
