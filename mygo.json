@@ -3,5 +3,10 @@
   "identifier": "com.iustech.fuckhttp",
   "version": "0.1.0",
   "copyright": "© 2025 iusTech.",
-  "publisher": "iusTech."
+  "publisher": "iusTech.",
+  "linux": {
+    "webview": false,
+    "comment": "A browser selector for intercepted URLs",
+    "categories": ["Network", "WebBrowser"]
+  }
 }
