@@ -4,7 +4,10 @@ package browser
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -46,6 +49,42 @@ func (b Browser) Launch(target string) error {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+// selfExecutable is the running program, with symlinks resolved.
+func selfExecutable() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		return resolved
+	}
+	return exe
+}
+
+// isSelfExecutable reports whether path is the program the app runs as: the
+// app must not offer to open a URL in itself.
+func isSelfExecutable(path string) bool {
+	if path == "" {
+		return false
+	}
+	self := selfExecutable()
+	if self == "" {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	return samePath(path, self)
+}
+
+func samePath(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if a == b {
+		return true
+	}
+	return runtime.GOOS == "windows" && strings.EqualFold(a, b)
 }
 
 // ApplyHidden marks the browsers whose name is in hidden.

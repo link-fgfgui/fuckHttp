@@ -21,6 +21,15 @@ func (b Browser) launchCommand(target string) (string, []string) {
 	return fields[0], append(fields[1:], target)
 }
 
+// executableOf is the program an Exec line runs.
+func executableOf(command string) string {
+	fields := expandFieldCodes(splitExec(command))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
 // splitExec splits a command line into arguments: spaces separate them, double
 // quotes group them, and a backslash escapes the next character.
 func splitExec(command string) []string {

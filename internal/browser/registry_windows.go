@@ -17,7 +17,7 @@ func Installed() ([]Browser, error) {
 		}
 		for _, key := range names {
 			b, ok := readBrowser(root, key)
-			if !ok || seen[b.Name] {
+			if !ok || seen[b.Name] || isSelfExecutable(b.Executable()) {
 				continue
 			}
 			seen[b.Name] = true

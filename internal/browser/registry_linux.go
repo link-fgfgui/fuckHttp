@@ -36,7 +36,7 @@ func Installed() ([]Browser, error) {
 				continue
 			}
 			b, ok := browserFromEntry(fields)
-			if !ok || seenName[b.Name] {
+			if !ok || seenName[b.Name] || isSelfExecutable(executableOf(b.Command)) {
 				continue
 			}
 			seenName[b.Name] = true
