@@ -43,7 +43,7 @@
 这些是用户已经装在系统里的东西，改动会破坏升级路径：
 
 - 注册表键名：`HKCU\Software\Classes\fuckHttp`、`HKLM\Software\fuckHttp\Capabilities`、`HKLM\Software\RegisteredApplications\fuckHttp`
-- 配置文件名与位置：`%TEMP%\browser_selector_config.json`，字段 `hidden_browsers`
+- 配置字段名：`hidden_browsers`（位置改为用户配置目录，旧临时目录文件自动迁移）
 - 命令行参数：`--register` / `--unregister` / 首个非 `--` 参数为 URL
 - 浏览器枚举来源：`SOFTWARE\Clients\StartMenuInternet`（HKLM + HKCU，按显示名去重）
 
@@ -135,7 +135,7 @@ tool    github.com/egoist/mygo/cmd/mygo
 
 - `extract`：无副作用，输入字符串 → 输出 `{URL, NeedAsync, Source}`；微信抓取单独函数，注入 `*http.Client` 便于测试。
 - `browser`：`Browser{Name, Command, Hidden}`、`Installed()`、`Executable()`、`Launch(url)`。
-- `config`：读写 `%TEMP%\browser_selector_config.json`，保持原字段名。
+- `config`：读写用户配置目录下的 `fuckHttp/config.json`（按 `os.UserConfigDir()`：Windows `%APPDATA%`、Linux `$XDG_CONFIG_HOME`），字段名不变，并迁移旧的临时文件。
 - `sysint`：注册表写入、提权。
 - `view`：持有全部 UI 状态，`view(c *ui.Context)` 是纯渲染函数；副作用（网络、进程、注册表）全部走回调或 goroutine + `win.Update`。
 - `main`：解析参数、处理 `--register`/`--unregister`、建窗口、接事件。
@@ -334,7 +334,7 @@ type App struct {
 | 浏览器显隐控件 | "隐藏/显示"按钮 | Switch | 原生控件习惯 |
 | 设置页尺寸 | 500 固定 | 500 固定 | 一致 |
 | 单实例 | 无 | 无 | 保持一致 |
-| 配置路径 | %TEMP% | %TEMP%（同名同字段） | 兼容 |
+| 配置路径 | %TEMP% | 用户配置目录（字段不变，自动迁移） | 临时目录会被清理 |
 | 注册表键 | 同左 | 同左 | 兼容 |
 
 ---
@@ -404,7 +404,7 @@ type App struct {
 ## 9. 可选改进（不在本次范围，需单独确认）
 
 1. 启动浏览器时保留命令里的额外参数（`%1` 替换），修复 Chrome/Edge 的 `--single-argument` 场景。
-2. 配置从 `%TEMP%` 迁到 `%APPDATA%\fuckHttp`（Temp 会被清理）。
+2. ~~配置从 `%TEMP%` 迁到用户配置目录~~（已实现）。
 3. 记住上次选择的浏览器 / 数字键快捷选择。
 4. 支持 macOS/Linux（枚举 `.desktop` / LaunchServices）。
 

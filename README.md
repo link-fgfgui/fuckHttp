@@ -63,13 +63,15 @@ fuckHttp.exe "https://example.com"
 
 ## 配置
 
-配置保存在：
+配置保存在用户的配置目录，重启不会被清理：
 
-```
-%TEMP%\browser_selector_config.json
-```
+- Windows：`%APPDATA%\fuckHttp\config.json`
+- Linux：`$XDG_CONFIG_HOME/fuckHttp/config.json`（默认 `~/.config/fuckHttp/config.json`）
+- macOS：`~/Library/Application Support/fuckHttp/config.json`
 
-内容为被隐藏的浏览器名称，与 Rust 版兼容：
+旧版本放在 `%TEMP%\browser_selector_config.json` 的文件会在首次启动时自动迁移过来。
+
+内容为被隐藏的浏览器名称：
 
 ```json
 {
