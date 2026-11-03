@@ -44,9 +44,11 @@ jobs:
           - name: linux-amd64
             os: ubuntu-latest
             platform: linux/amd64
+            out: linux-amd64
           - name: windows-amd64
             os: windows-latest
             platform: windows/amd64
+            out: windows-amd64
     steps:
       - uses: actions/checkout@v4
 
@@ -61,5 +63,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: fuckhttp-${{ matrix.name }}
-          path: dist/${{ matrix.platform }}/*
+          path: dist/${{ matrix.out }}/*
           if-no-files-found: error
